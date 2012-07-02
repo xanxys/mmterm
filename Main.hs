@@ -20,18 +20,25 @@ import qualified Codec.Binary.UTF8.String as UTF8
 import qualified Data.Foldable as Fold
 import qualified Data.Sequence as Seq
 
+type Model = MVar (Seq.Seq Message)
+
+data Message =
+    StringMessage String |
+    UniformArrayMessage [Int] BS.ByteString
+    deriving(Show)
+
 main = do
-    print $ Fold.toList $ fst $ Seq.splitAt 5 $ snd $ Seq.splitAt 1 (Seq.empty :: Seq.Seq Int)
-    mseq <- runServer
+    let port = 8001
+    mseq <- runServer port
     
     initGUI
     window <- windowNew
     vb <- vBoxNew False 1
-    lb <- labelNew (Just $ "192.168.24.15 "++show port++" ok")
+    lb <- labelNew (Just $ printf "192.168.24.15 %d ok" port)
     hb <- hBoxNew False 0
     tb <- vBoxNew False 0
     refill mseq tb 0
-    adj <- adjustmentNew 1 1 100 1 20 20
+    adj <- adjustmentNew 0 1 100 1 20 20
     onScroll window $ \ev->do
         v0 <- adjustmentGetValue adj
         delta <- adjustmentGetPageIncrement adj
@@ -52,12 +59,43 @@ main = do
     let update=do
         prev_n <- readIORef nmseq
         curr_n <- withMVar mseq (return . Seq.length)
-        when (curr_n/=prev_n) $ adjustmentGetValue adj >>= refill mseq tb
+        when (curr_n/=prev_n) $ do
+            adjustmentSetUpper adj $ fromIntegral curr_n
+            adjustmentGetValue adj >>= refill mseq tb
         writeIORef nmseq curr_n
     timeoutAdd (update >> return True) 50
     onDestroy window mainQuit
     widgetShowAll window
     mainGUI
+
+
+-- seems ok
+refill mseq box fromd=do
+    let from=floor $ realToFrac fromd-1
+    mapM_ widgetDestroy =<< containerGetChildren box
+    msgs <- withMVar mseq $ return . Fold.toList . fst . Seq.splitAt 20 . snd . Seq.splitAt from
+    mapM_ (\msg->do{l<-instantiateView msg; boxPackStart box l PackNatural 0}) msgs
+    widgetShowAll box
+
+
+instantiateView :: Message -> IO Widget
+instantiateView (StringMessage x)=do
+    l <- labelNew (Just x)
+    set l [miscXalign := 0]
+    return $ castToWidget l
+
+instantiateView (UniformArrayMessage shape raw)=do
+    l <- drawingAreaNew
+    surf <- arrayToSurface shape raw
+    widgetSetSizeRequest l (-1) 25
+    onExpose l $ \ev -> do
+        dw <- widgetGetDrawWindow l
+        renderWithDrawable dw $ do
+            setSourceSurface surf 0 0
+            paint
+        return True
+    
+    return $ castToWidget l
 
 
 arrayToSurface [h,w,c] raw = do
@@ -82,22 +120,17 @@ arrayToSurface [h,w,c] raw = do
             writeArray arr (i*4+2) $ BS.index raw (i*3+0)
             
 
-data Message =
-    StringMessage String |
-    UniformArrayMessage [Int] BS.ByteString
-    deriving(Show)
 
-port=8001
 
-runServer :: IO (MVar (Seq.Seq Message))
-runServer=do
+runServer :: Int -> IO Model
+runServer port = do
     ch <- newChan
     mseq <- newMVar Seq.empty
     forkIO $ forever $ do
         x <- readChan ch
         modifyMVar_ mseq $ return . (Seq.|> x)
     
-    sock <- listenOn (PortNumber port)
+    sock <- listenOn (PortNumber $ fromIntegral port)
     putStrLn "started listening"
     forkIO $ forever $ do
         (h, host, port) <- accept sock
@@ -132,49 +165,5 @@ translateMessage
         then return $ UniformArrayMessage shape raw
         else Nothing
 translateMessage _=Nothing
-
-
-
-
-
-instantiateView (StringMessage x)=do
---    l <- labelNew (Just $ show x)
---    labelSetSelectable l True
-    l <- drawingAreaNew
-    widgetSetSizeRequest l (-1) 20
-    onExpose l $ \ev -> do
-        dw <- widgetGetDrawWindow l
-        renderWithDrawable dw $ do
-            setSourceRGB 0.5 0.5 1
-            translate 0 10
-            showText x
-            fill
-        return True
-    
-    return l
-
-instantiateView (UniformArrayMessage shape raw)=do
---    l <- labelNew (Just $ show x)
---    labelSetSelectable l True
-    l <- drawingAreaNew
-    surf <- arrayToSurface shape raw
-    widgetSetSizeRequest l (-1) 25
-    onExpose l $ \ev -> do
-        dw <- widgetGetDrawWindow l
-        renderWithDrawable dw $ do
-            setSourceSurface surf 0 0
-            paint
-        return True
-    
-    return l
-
--- seems ok
-refill mseq box fromd=do
-    let from=floor $ realToFrac fromd
-    mapM_ widgetDestroy =<< containerGetChildren box
-    msgs <- withMVar mseq $ return . Fold.toList . fst . Seq.splitAt 20 . snd . Seq.splitAt from
-    mapM_ (\msg->do{l<-instantiateView msg; boxPackStart box l PackNatural 0}) msgs
-    widgetShowAll box
-
 
 
