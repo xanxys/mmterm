@@ -16,6 +16,7 @@ import Data.Word
 import Data.Array.MArray
 import Data.MessagePack as MP
 import Data.Attoparsec.ByteString as Atto
+import qualified Data.Array.Base as Unsafe
 import qualified Codec.Binary.UTF8.String as UTF8
 import qualified Data.Foldable as Fold
 import qualified Data.Sequence as Seq
@@ -34,7 +35,10 @@ main = do
     initGUI
     window <- windowNew
     vb <- vBoxNew False 1
-    lb <- labelNew (Just $ printf "192.168.24.15 %d ok" port)
+    status <- hBoxNew False 0
+    lb <- labelNew (Just $ printf "listening on port %d" port)
+    clear <- buttonNewFromStock "gtk-clear"
+    on clear buttonActivated $ void $ swapMVar mseq Seq.empty
     hb <- hBoxNew False 0
     tb <- vBoxNew False 0
     refill mseq tb 0
@@ -51,7 +55,9 @@ main = do
     on scr valueChanged (adjustmentGetValue adj >>= refill mseq tb)
     boxPackStart hb tb PackGrow 0
     boxPackStart hb scr PackNatural 0
-    boxPackStart vb lb PackNatural 0
+    boxPackStart status lb PackGrow 0
+    boxPackStart status clear PackNatural 0
+    boxPackStart vb status PackNatural 0
     boxPackStart vb hb PackGrow 0
     set window [containerChild := vb]
     
@@ -90,9 +96,14 @@ instantiateView (UniformArrayMessage shape raw)=do
     widgetSetSizeRequest l (-1) 25
     onExpose l $ \ev -> do
         dw <- widgetGetDrawWindow l
+        w <- imageSurfaceGetWidth surf
         renderWithDrawable dw $ do
+            save
+            when (w<15) $ scale 3 3
             setSourceSurface surf 0 0
+            getSource >>= flip patternSetFilter FilterNearest
             paint
+            restore
         return True
     
     return $ castToWidget l
@@ -108,16 +119,16 @@ arrayToSurface [h,w,c] raw = do
     return surf
     where
         transfer arr i = do
-            mapM_ (\d -> writeArray arr (i*4+d) $ BS.index raw (i*c+d)) [0..min c 3-1]
+            mapM_ (\d -> Unsafe.unsafeWrite arr (i*4+d) $ BS.index raw (i*c+d)) [0..min c 3-1]
         transfer1 arr i = do
             let v = BS.index raw i
-            writeArray arr (i*4+0) v
-            writeArray arr (i*4+1) v
-            writeArray arr (i*4+2) v
+            Unsafe.unsafeWrite arr (i*4+0) v
+            Unsafe.unsafeWrite arr (i*4+1) v
+            Unsafe.unsafeWrite arr (i*4+2) v
         transfer3 arr i = do
-            writeArray arr (i*4+0) $ BS.index raw (i*3+2)
-            writeArray arr (i*4+1) $ BS.index raw (i*3+1)
-            writeArray arr (i*4+2) $ BS.index raw (i*3+0)
+            Unsafe.unsafeWrite arr (i*4+0) $ BS.index raw (i*3+2)
+            Unsafe.unsafeWrite arr (i*4+1) $ BS.index raw (i*3+1)
+            Unsafe.unsafeWrite arr (i*4+2) $ BS.index raw (i*3+0)
             
 
 
