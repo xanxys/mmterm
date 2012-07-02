@@ -23,7 +23,7 @@ import msgpack
 # ["str", utf8 string] string
 # ["uni", "u8", shape, raw] uniform array
 # as messagepack
-class Numlog(object):
+class MMLog(object):
     def __init__(self):
         try:
             self.client = socket.create_connection(('127.0.0.1', 8001))
