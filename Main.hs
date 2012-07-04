@@ -1,9 +1,10 @@
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE ViewPatterns, TupleSections #-}
 module Main where
 import Control.Concurrent
 import Control.Concurrent.Chan
 import Control.Concurrent.MVar
 import Data.IORef
+import Data.List
 import Control.Monad
 import Graphics.UI.Gtk
 import Graphics.UI.Gtk.Gdk.Events as Ev
@@ -20,8 +21,9 @@ import qualified Data.Array.Base as Unsafe
 import qualified Codec.Binary.UTF8.String as UTF8
 import qualified Data.Foldable as Fold
 import qualified Data.Sequence as Seq
+import qualified Data.Set as Set
 
-type Model = MVar (Seq.Seq Message)
+type Model = (MVar (Seq.Seq Message), MVar (Set.Set String))
 
 data Message =
     StringMessage String |
@@ -30,13 +32,14 @@ data Message =
 
 main = do
     let port = 8001
-    mseq <- runServer port
+    (mseq, mClients) <- runServer port
     
     initGUI
     window <- windowNew
     vb <- vBoxNew False 1
     status <- hBoxNew False 0
     lb <- labelNew (Just $ printf "listening on port %d" port)
+    lbClients <- labelNew (Just "")
     clear <- buttonNewFromStock "gtk-clear"
     on clear buttonActivated $ void $ swapMVar mseq Seq.empty
     hb <- hBoxNew False 0
@@ -58,18 +61,29 @@ main = do
     boxPackStart status lb PackGrow 0
     boxPackStart status clear PackNatural 0
     boxPackStart vb status PackNatural 0
+    boxPackStart vb lbClients PackNatural 0
     boxPackStart vb hb PackGrow 0
     set window [containerChild := vb]
     
     nmseq <- newIORef 0
-    let update=do
-        prev_n <- readIORef nmseq
-        curr_n <- withMVar mseq (return . Seq.length)
-        when (curr_n/=prev_n) $ do
-            adjustmentSetUpper adj $ fromIntegral curr_n
-            adjustmentGetValue adj >>= refill mseq tb
-        writeIORef nmseq curr_n
-    timeoutAdd (update >> return True) 50
+    nmcls <- newIORef 0
+    let
+        updateLog=do
+            prev_n <- readIORef nmseq
+            curr_n <- withMVar mseq (return . Seq.length)
+            when (curr_n/=prev_n) $ do
+                adjustmentSetUpper adj $ fromIntegral curr_n
+                adjustmentGetValue adj >>= refill mseq tb
+            writeIORef nmseq curr_n
+        updateClients = do
+            prev_n <- readIORef nmcls
+            curr_n <- withMVar mClients (return . Set.size)
+            when (curr_n/=prev_n) $ do
+                str <- withMVar mClients (return . intercalate " / " . Fold.toList)
+                labelSetText lbClients str
+            writeIORef nmcls curr_n
+        
+    timeoutAdd (updateLog >> updateClients >> return True) 50
     onDestroy window mainQuit
     widgetShowAll window
     mainGUI
@@ -135,20 +149,27 @@ arrayToSurface [h,w,c] raw = do
 
 runServer :: Int -> IO Model
 runServer port = do
+    mLog <- newMVar Seq.empty
+    mClients <- newMVar Set.empty
+    
     ch <- newChan
-    mseq <- newMVar Seq.empty
     forkIO $ forever $ do
         x <- readChan ch
-        modifyMVar_ mseq $ return . (Seq.|> x)
+        modifyMVar_ mLog $ return . (Seq.|> x)
     
     sock <- listenOn (PortNumber $ fromIntegral port)
     putStrLn "started listening"
     forkIO $ forever $ do
         (h, host, port) <- accept sock
-        printf "received connection from %s %s" host (show port)
+        let clientName = printf "%s %s" host (show port)
+        modifyMVar_ mClients $ return . Set.insert clientName
+        
         hSetBuffering h NoBuffering
-        forkIO $ handleConn ch h (Atto.parse MP.get)
-    return mseq
+        forkIO $ do
+            handleConn ch h (Atto.parse MP.get)
+            modifyMVar_ mClients $ return . Set.delete clientName
+    
+    return (mLog, mClients)
 
 handleConn ch h parse_cont = BS.hGet h 16 >>= resolveFull parse_cont
     where
