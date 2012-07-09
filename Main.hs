@@ -107,7 +107,7 @@ instantiateView (StringMessage x)=do
 instantiateView (UniformArrayMessage shape raw)=do
     l <- drawingAreaNew
     surf <- arrayToSurface shape raw
-    widgetSetSizeRequest l (-1) 25
+    widgetSetSizeRequest l (-1) $ max 25 (head shape)
     onExpose l $ \ev -> do
         dw <- widgetGetDrawWindow l
         w <- imageSurfaceGetWidth surf
