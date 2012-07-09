@@ -45,11 +45,11 @@ class MMLog(object):
                     self.log('unknown image format: %s'%x)
             else:
                 self._send(["uni","u8",[x.height, x.width, x.channels], x.tostring()])
-        elif type(x) is np.array:
-            if np.dtype!=np.uint8:
-                self.log('unsupported array type: %s'%np.dtype)
+        elif type(x) is np.ndarray:
+            if x.dtype!=np.uint8:
+                self.log('unsupported array type: %s'%x.dtype)
             else:
-                self._send(["uni", "u8", np.shape, np.tostring()])
+                self._send(["uni", "u8", x.shape, x.tostring()])
         else:
             print('unknown format: %s'%type(x))
 

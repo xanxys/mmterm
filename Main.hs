@@ -122,7 +122,7 @@ instantiateView (UniformArrayMessage shape raw)=do
     
     return $ castToWidget l
 
-
+arrayToSurface [h,w] raw = arrayToSurface [h,w,1] raw
 arrayToSurface [h,w,c] raw = do
     surf <- createImageSurface FormatRGB24 w h
     arr <- imageSurfaceGetPixels surf -- BGRA packing
@@ -143,7 +143,10 @@ arrayToSurface [h,w,c] raw = do
             Unsafe.unsafeWrite arr (i*4+0) $ BS.index raw (i*3+2)
             Unsafe.unsafeWrite arr (i*4+1) $ BS.index raw (i*3+1)
             Unsafe.unsafeWrite arr (i*4+2) $ BS.index raw (i*3+0)
-            
+arrayToSurface shape _ = do
+    putStrLn "unknown shape"
+    print shape
+    createImageSurface FormatRGB24 1 1
 
 
 
