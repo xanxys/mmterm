@@ -1,4 +1,11 @@
 {-# LANGUAGE ViewPatterns, TupleSections #-}
+-- | Easy logging of images and matrices(palnned) for CV research.
+-- messages are send via TCP connection as MessagePack objects.
+--
+-- * ["str", utf8 string]: string
+--
+-- * ["uni", "u8", shape, raw]: uniform array
+--
 module Main where
 import Control.Concurrent
 import Control.Concurrent.Chan
@@ -18,7 +25,7 @@ import Data.Array.MArray
 import Data.MessagePack as MP
 import Data.Attoparsec.ByteString as Atto
 import qualified Data.Array.Base as Unsafe
-import qualified Codec.Binary.UTF8.String as UTF8
+import qualified Codec.Binary.UTF8.String
 import qualified Data.Foldable as Fold
 import qualified Data.Sequence as Seq
 import qualified Data.Set as Set
@@ -122,6 +129,7 @@ instantiateView (UniformArrayMessage shape raw)=do
     
     return $ castToWidget l
 
+arrayToSurface :: [Int] -> BS.ByteString -> IO Surface
 arrayToSurface [h,w] raw = arrayToSurface [h,w,1] raw
 arrayToSurface [h,w,c] raw = do
     surf <- createImageSurface FormatRGB24 w h
@@ -188,11 +196,11 @@ handleConn ch h parse_cont = BS.hGet h 16 >>= resolveFull parse_cont
         
 translateMessage :: [MP.Object] -> Maybe Message
 translateMessage
-    [ObjectRAW (UTF8.decode . BS.unpack -> "str"),
-    (ObjectRAW msg)]=Just $ StringMessage $ UTF8.decode $ BS.unpack msg
+    [ObjectRAW (decodeUTF8 -> "str"),
+    (ObjectRAW msg)]=Just $ StringMessage $ decodeUTF8 msg
 translateMessage
-    [ObjectRAW (UTF8.decode . BS.unpack -> "uni"),
-    ObjectRAW (UTF8.decode . BS.unpack -> "u8"),
+    [ObjectRAW (decodeUTF8 -> "uni"),
+    ObjectRAW (decodeUTF8 -> "u8"),
     shape_raw,
     ObjectRAW raw]=do
     shape <- MP.fromObject shape_raw
@@ -201,4 +209,6 @@ translateMessage
         else Nothing
 translateMessage _=Nothing
 
+decodeUTF8 :: BS.ByteString -> String
+decodeUTF8 = Codec.Binary.UTF8.String.decode . BS.unpack
 
