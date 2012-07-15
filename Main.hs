@@ -135,9 +135,9 @@ arrayToSurface [h,w,c] raw = do
     surf <- createImageSurface FormatRGB24 w h
     arr <- imageSurfaceGetPixels surf -- BGRA packing
     case c of
-        1 -> mapM_ (transfer1 arr) [0..w*h-1]
-        3 -> mapM_ (transfer3 arr) [0..w*h-1]
-        _ -> mapM_ (transfer arr) [0..w*h-1]
+        1 -> mapM_ (\i -> transfer1 arr i) [0..w*h-1]
+        3 -> mapM_ (\i -> transfer3 arr i) [0..w*h-1]
+        _ -> mapM_ (\i -> transfer arr i) [0..w*h-1]
     return surf
     where
         transfer arr i = do
@@ -182,7 +182,7 @@ runServer port = do
     
     return (mLog, mClients)
 
-handleConn ch h parse_cont = BS.hGet h 16 >>= resolveFull parse_cont
+handleConn ch h parse_cont = BS.hGet h 1024 >>= resolveFull parse_cont
     where
         resolveFull parse_cont x = do
             case parse_cont x of
