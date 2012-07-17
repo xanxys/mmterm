@@ -36,5 +36,5 @@ class MMLog(object):
             else:
                 self._send(["uni", "u8", x.shape, x.tostring()])
         else:
-            print('unknown format: %s'%type(x))
+            self._send(["str", repr(x)])
 
